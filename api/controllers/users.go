@@ -6,7 +6,9 @@ import (
 	"app/api/modals"
 	"app/request"
 	"net/http"
+	"time"
 
+	"github.com/golang-jwt/jwt"
 	"github.com/labstack/echo/v4"
 )
 
@@ -49,10 +51,35 @@ func UserLogin(c echo.Context) error {
 	// verilerle eşleşen kayıt var mı ?
 	result := db.Where("email = ?", rq.Email).Find(&user)
 	checkpass := helpers.CheckPasswordHash(rq.Password, user.Password)
-	if result.RowsAffected == 0 || checkpass == false {
+	if result.RowsAffected == 0 || !checkpass {
 		return c.JSON(http.StatusBadRequest, "Kullanıcı Adı Veya Şifre Yanlış")
 	}
-	return c.JSON(http.StatusOK, user)
+	claims := &config.JwtCustom{
+		modals.User{
+			Name:     user.Name,
+			Email:    user.Email,
+			Password: user.Password,
+			Ballance: user.Ballance,
+		},
+		jwt.StandardClaims{
+			ExpiresAt: time.Now().Add(time.Hour * 72).Unix(),
+		},
+	}
+	// Create token with claims
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	// Generate encoded token and send it as response.
+	t, err := token.SignedString([]byte("mykey"))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, err)
+	}
+
+	return c.JSON(http.StatusOK, echo.Map{
+		"name":     claims.User.Name,
+		"email":    claims.User.Email,
+		"password": claims.User.Password,
+		"ballance": claims.User.Ballance,
+		"token":    t,
+	})
 }
 
 func UserList(c echo.Context) error {
